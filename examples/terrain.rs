@@ -1,5 +1,6 @@
 use glow::HasContext;
 use minimg::ImageBuffer;
+use minirng::noise::noise_grad;
 use minvect::*;
 extern crate glow_mesh;
 use glow_mesh::xyzrgbauv::*;
@@ -41,20 +42,20 @@ impl Demo {
                 .unwrap();
     
             let gl = glow::Context::from_loader_function(|s| window.get_proc_address(s) as *const _);
-    
+            gl.enable(glow::DEPTH_TEST);
             let prog = ProgramXYZRGBAUV::new(&gl, &DEFAULT_VS, &FS_UV_DEMO, &ImageBuffer::new(512, 512));
 
             let tmat = [
-                0.1, 0.0, 0.0, 0.0,
-                0.0, 0.1, 0.0, 0.0,
-                0.0, 0.0, 10.0, 0.0,
+                16.0, 0.0, 0.0, 0.0,
+                0.0, 0.8, 0.0, 0.0,
+                0.0, 0.0, 16.0, 0.0,
                 0.0, 0.0, 0.0, 1.0,
             ];
 
             // let tmat = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
     
             let buf = &mut vec![];
-            push_terrain_mesh(buf, 1000, 69);
+            push_terrain_mesh(buf, 400, 121);
             transform_mesh(buf, &tmat);
             let h = upload_xyzrgbauv_mesh(buf, &gl);
             prog.bind(&gl);
@@ -66,7 +67,7 @@ impl Demo {
                 gl,
                 prog,
                 h,
-                cam_pos: vec3(0.0, -0.2, 0.0),
+                cam_pos: vec3(-8.0, -1.6, -8.0),
                 cam_polar_angle: PI/2.0,
                 cam_azimuthal_angle: 0.0,
                 lock_cursor: false,
@@ -153,7 +154,7 @@ out vec4 frag_colour;
 uniform sampler2D tex;
 
 void main() {
-    frag_colour = vec4(uv.xy, 0.0, 1.0);
+    frag_colour = col;
 }
 "#;
 
@@ -183,8 +184,8 @@ pub fn push_terrain_mesh(buf: &mut Vec<XYZRGBAUV>, s: usize, seed: u32) {
             let verts = [
                 vert(p00, h00),
                 vert(p01, h01),
-                vert(p10, h10),
                 vert(p11, h11),
+                vert(p10, h10),
             ];
 
             push_quad(buf, verts);
@@ -194,7 +195,7 @@ pub fn push_terrain_mesh(buf: &mut Vec<XYZRGBAUV>, s: usize, seed: u32) {
 pub fn vert(p: Vec2, h: f32) -> XYZRGBAUV {
     XYZRGBAUV {
         xyz: vec3(p.x, h, p.y),
-        rgba: colourmap(h),
+        rgba: colourmap(h+0.1*(noise_grad(&(64.0*p), 21)-0.5)),
         uv: p,
     }
 }
@@ -205,7 +206,7 @@ fn id(v: &XYZRGBAUV) -> XYZRGBAUV {
 
 pub fn push_quad(buf: &mut Vec<XYZRGBAUV>, verts: [XYZRGBAUV; 4]) {
     buf.push(id(&verts[0])); buf.push(id(&verts[1])); buf.push(id(&verts[3]));
-    buf.push(id(&verts[1])); buf.push(id(&verts[2])); buf.push(id(&verts[3]));
+    buf.push(id(&verts[3])); buf.push(id(&verts[1])); buf.push(id(&verts[2]));
 }
 
 pub fn colourmap(h: f32) -> Vec4 {
@@ -219,12 +220,14 @@ pub fn colourmap(h: f32) -> Vec4 {
 
     let h_gradient = vec![
         (NEG_INFINITY, col_deep_water),
+        (-100.0, col_deep_water),
         (0.0, col_deep_water),
-        (0.6, col_shallow_water),
-        (0.601, col_beach),
-        (0.68, col_plains),
-        (1.4, col_forest),
-        (1.5, col_mountain),
+        (0.8, col_shallow_water),
+        (0.801, col_beach),
+        (0.88, col_beach),
+        (0.94, col_plains),
+        (1.6, col_forest),
+        (1.7, col_mountain),
         (2.0, col_snow),
         (INFINITY, col_snow),
     ];
@@ -233,9 +236,11 @@ pub fn colourmap(h: f32) -> Vec4 {
     col_h
 }
 
+// gradient shit would be better if it had just the width of the band of colour.... maybe
+
 pub fn h(p: Vec2, seed: u32) -> f32 {
     use wavelet_noise::wavelet_noise::*;
-    gen(64.0*p, seed) + 1.0
+    gen_frac(4.0*p, 6, 0.5, 2.0, seed) + 0.5
 }
 
 fn gradient(cols: &[(f32, Vec4)], t: f32) -> Vec4 {
@@ -389,3 +394,13 @@ pub fn homog_transform(v: Vec3, mat: &[f32; 16]) -> Vec3 {
 
     vec3(x, y, z)
 }
+
+// pub fn homog_transform(v: Vec3, mat: &[f32; 16]) -> Vec3 {
+//     let x = v.x * mat[0] + v.y * mat[4] + v.z * mat[8] + mat[12];
+//     let y = v.x * mat[1] + v.y * mat[5] + v.z * mat[9] + mat[13];
+//     let z = v.x * mat[2] + v.y * mat[6] + v.z * mat[10] + mat[14];
+//     let w = v.x * mat[3] + v.y * mat[7] + v.z * mat[11] + mat[15];
+
+//     Vec3 { x: x / w, y: y / w, z: z / w }
+// }
+
